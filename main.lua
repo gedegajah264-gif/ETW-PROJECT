@@ -6,6 +6,7 @@
     - Fix: ESP nyangkut pas di-OFF sekarang langsung bersih
     - Added: Auto Sell berdasarkan UI Bar Detection (Size.X.Scale >= 1)
     - Added: Whitelist System (Hanya player tertentu yang bisa pakai)
+    - Update: DYNAMIC ATTACK TP (Anti-fling/bug pas lagi sambil makan)
 ]]
 
 local Players = game:GetService("Players")
@@ -27,18 +28,15 @@ local WhitelistedUsers = {
     "jiejisung00"
 }
 
--- Cek apakah nama player ada di dalam daftar whitelist
 if not table.find(WhitelistedUsers, LocalPlayer.Name) then
-    -- Kirim notifikasi kalau gagal masuk
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "HAZE V2.2",
         Text = "Access Denied: Username tidak di-whitelist!",
         Duration = 5
     })
-    return -- Menghentikan script agar tidak lanjut jalan
+    return
 end
 
--- Kirim notifikasi kalau berhasil masuk
 game:GetService("StarterGui"):SetCore("SendNotification", {
     Title = "HAZE V2.2",
     Text = "Welcome to Haze, " .. LocalPlayer.Name .. "!",
@@ -73,7 +71,7 @@ if not workspace:FindFirstChild("HansBigPlatform") then
     p.Parent = workspace
 end
 
--- Bersihkan UI lama dengan pcall biar aman
+-- Bersihkan UI lama
 local oldUIs = {"HAZE_HUB", "CustomGUI", "HazeAutoSell", "HazeEmotes", "HazeUtility", "HAZE_V2", "HAZE_V2_1", "HAZE_V2_2"}
 for _, uiName in pairs(oldUIs) do
     pcall(function()
@@ -213,10 +211,8 @@ getgenv().AutoFarm = false
 getgenv().SpeedEnabled = false
 getgenv().SpeedValue = 100
 
--- FIX: Jangan pakai WaitForChild di luar loop biar gak hang
 local setCubesEvent = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("SetCubes")
 
--- FIX: Pakai Heartbeat ganti RenderStepped
 RunService.Heartbeat:Connect(function(delta)
     local char = LocalPlayer.Character
     if not char then return end
@@ -288,7 +284,7 @@ end)
 createToggle("Auto Sell (Bar)", false, function(v) getgenv().AutoSellBar = v end)
 
 -- ==========================================
--- RESTORED ATTACK TP (FULL LOGIC)
+-- UPDATED: DYNAMIC ATTACK TP
 -- ==========================================
 getgenv().AttackTP = false
 getgenv().TargetPlayer = ""
@@ -312,7 +308,13 @@ local function getTargetPlayer(query)
     return nil
 end
 
-createToggle("Attack TP Loop", false, function(v) getgenv().AttackTP = v end)
+createToggle("Attack TP Loop", false, function(v) 
+    getgenv().AttackTP = v 
+    if not v and attackTpConnection then
+        attackTpConnection:Disconnect()
+        attackTpConnection = nil
+    end
+end)
 
 task.spawn(function()
     while true do
@@ -320,23 +322,30 @@ task.spawn(function()
             local targetPlayer = getTargetPlayer(getgenv().TargetPlayer)
             local char = LocalPlayer.Character
             if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and char and char:FindFirstChild("HumanoidRootPart") then
+                
                 char:SetPrimaryPartCFrame(CFrame.new(getRandomPosition()))
                 task.wait(1.5)
+                
                 if char:FindFirstChild("Events") and char.Events:FindFirstChild("Grab") then   
                     char.Events.Grab:FireServer()   
                 end   
                 task.wait(2)
-                local targetRoot = targetPlayer.Character.HumanoidRootPart
-                char:SetPrimaryPartCFrame(targetRoot.CFrame * CFrame.new(0, 0, 2))
+                
                 attackTpConnection = RunService.Heartbeat:Connect(function()
-                    if getgenv().AttackTP and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then   
-                        char:SetPrimaryPartCFrame(targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2))   
+                    if getgenv().AttackTP and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and char and char:FindFirstChild("HumanoidRootPart") then   
+                        local mySize = char:GetExtentsSize().Z
+                        local targetSize = targetPlayer.Character:GetExtentsSize().Z
+                        local safeDistance = (mySize / 2) + (targetSize / 2) + 2
+                        
+                        char:SetPrimaryPartCFrame(targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, safeDistance))   
                     end   
                 end)
+                
                 if char:FindFirstChild("Events") and char.Events:FindFirstChild("Throw") then
                     char.Events.Throw:FireServer()
                 end
                 task.wait(1.5)
+                
                 if attackTpConnection then
                     attackTpConnection:Disconnect()
                     attackTpConnection = nil
